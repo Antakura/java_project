@@ -1,0 +1,20 @@
+Starting NyamNyam System...
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by org.sqlite.SQLiteJDBCLoader in an unnamed module (file:/C:/Users/%d0%9c%d0%b0%d0%ba%d1%81%d0%b8%d0%bc/.m2/repository/org/xerial/sqlite-jdbc/3.42.0.0/sqlite-jdbc-3.42.0.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+Seed data: Created test user 'Ivan Ivanov'
+Seed data: Menu loaded (3 restaurants, 8 products).
+[main] INFO io.javalin.Javalin - Starting Javalin ...
+[main] INFO org.eclipse.jetty.server.Server - jetty-11.0.15; built: 2023-04-11T18:37:53.775Z; git: 5bc5e562c8d05c5862505aebe5cf83a61bdbcb96; jvm 27.0.1.0.3+1-2
+[main] INFO org.eclipse.jetty.server.session.DefaultSessionIdManager - Session workerName=node0
+[main] INFO org.eclipse.jetty.server.handler.ContextHandler - Started i.j.j.@5aa9e4eb{/,null,AVAILABLE}
+[main] INFO org.eclipse.jetty.server.AbstractConnector - Started ServerConnector@2fd6b6c7{HTTP/1.1, (http/1.1)}{0.0.0.0:7000}
+[main] INFO org.eclipse.jetty.server.Server - Started Server@1f0f1111{STARTING}[11.0.15,sto=0] @411ms
+[main] INFO io.javalin.Javalin - Your JDK supports Loom. Javalin will prefer Virtual Threads by default. Disable with `ConcurrencyUtil.useLoom = false`.
+[main] INFO io.javalin.Javalin - Listening on http://localhost:7000/
+[main] INFO io.javalin.Javalin - You are running Javalin 5.6.1 (released June 22, 2023. Your Javalin version is 1234 days old. Consider checking for a newer version.).
+[main] INFO io.javalin.Javalin - Javalin started in 162ms \o/
+[WebServer] Frontend available at http://localhost:7000/
+System is running. Frontend: http://localhost:7000/

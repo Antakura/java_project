@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NyamNyam — доставка еды</title>
+  <style>
+    :root {
+      --accent: #ff6b35;
+      --accent-dark: #e55a2b;
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2430;
+      --muted: #7a8194;
+      --border: #e6e9ef;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .logo { font-size: 22px; font-weight: 700; }
+    .client-box { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+    select, button {
+      font-family: inherit;
+      font-size: 14px;
+    }
+    select {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+    }
+    nav.tabs {
+      display: flex;
+      gap: 4px;
+      padding: 0 28px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 12px 16px;
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 600;
+      border-bottom: 3px solid transparent;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    main { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+    }
+    .restaurant-title { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+    .district-tag { color: var(--muted); font-size: 13px; }
+
+    table.menu-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .menu-table td { padding: 9px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .menu-table tr:last-child td { border-bottom: none; }
+    .price { white-space: nowrap; font-weight: 600; }
+
+    button.btn {
+      appearance: none;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 14px;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    button.btn:hover { background: var(--accent-dark); }
+    button.btn.secondary { background: #eef1f6; color: var(--text); }
+    button.btn.secondary:hover { background: #e2e7ef; }
+    button.btn.danger { background: #ffe3e0; color: #c0392b; }
+    button.btn.danger:hover { background: #ffd3ce; }
+    button.btn:disabled { opacity: .5; cursor: default; }
+
+    .cart-item { display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+    .cart-item:last-of-type { border-bottom: none; }
+    .subtotal { margin-top: 10px; text-align: right; font-weight: 700; }
+
+    .checkout-form { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+    .checkout-form label { font-size: 13px; color: var(--muted); }
+
+    .badge {
+      display: inline-block;
+      min-width: 20px;
+      text-align: center;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .badge.hidden { display: none; }
+
+    .status {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .st-CREATED            { background: #e8f0fe; color: #1a56db; }
+    .st-COOKING            { background: #fff4e0; color: #b45309; }
+    .st-READY_FOR_DELIVERY { background: #fef9c3; color: #a16207; }
+    .st-DELIVERING         { background: #ede9fe; color: #6d28d9; }
+    .st-COMPLETED          { background: #dcfce7; color: #15803d; }
+    .st-CANCELLED          { background: #ffe4e6; color: #be123c; }
+
+    .order-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .order-meta { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.5; }
+    .order-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+
+    .empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 15px; }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2430;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      box-shadow: 0 6px 24px rgba(0,0,0,.25);
+      z-index: 100;
+    }
+    .toast.hidden { display: none; }
+    .toast.error { background: #b91c1c; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">🍔 NyamNyam</div>
+    <div class="client-box">
+      <label for="clientSelect">Клиент:</label>
+      <select id="clientSelect"></select>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="menu">Меню</button>
+    <button class="tab" data-tab="cart">Корзина <span id="cartBadge" class="badge hidden" style="background:var(--accent)">0</span></button>
+    <button class="tab" data-tab="orders">Заказы</button>
+  </nav>
+
+  <main>
+    <section id="panel-menu" class="tab-panel active"></section>
+    <section id="panel-cart" class="tab-panel"></section>
+    <section id="panel-orders" class="tab-panel"></section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+    "use strict";
+
+    // ---------- Константы и состояние ----------
+    const STATUS_LABELS = {
+      CREATED: "Создан",
+      COOKING: "Готовится",
+      READY_FOR_DELIVERY: "Готов к доставке",
+      DELIVERING: "В пути",
+      COMPLETED: "Доставлен",
+      CANCELLED: "Отменён"
+    };
+    const DISTRICT_LABELS = {
+      CENTRAL: "Центр",
+      SUBURB: "Пригород",
+      OUTSKIRTS: "Окраина"
+    };
+
+    let state = { client: null, products: [], restaurants: [] };
+
+    // ---------- Утилиты ----------
+    const $ = (sel) => document.querySelector(sel);
+
+    async function api(path, options) {
+      const res = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      if (!res.ok) {
+        let message;
+        try {
+          const body = await res.json();
+          message = body.error || JSON.stringify(body);
+        } catch (e) {
+          message = await res.text() || res.statusText;
+        }
+        throw new Error(message);
+      }
+      if (res.status === 204) return null;
+      return res.json();
+    }
+
+    let toastTimer = null;
+    function toast(message, isError) {
+      const el = $("#toast");
+      el.textContent = message;
+      el.classList.toggle("error", !!isError);
+      el.classList.remove("hidden");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add("hidden"), 3500);
+    }
+
+    const fmtPrice = (v) => v.toFixed(2).replace(".", ",") + " ₽";
+
+    // ---------- Клиенты ----------
+    async function loadClients() {
+      const users = await api("/users");
+      const select = $("#clientSelect");
+      select.innerHTML = "";
+      for (const u of users) {
+        const opt = document.createElement("option");
+        opt.value = u.id;
+        opt.textContent = `${u.name} (${u.phoneNumber})`;
+        select.appendChild(opt);
+      }
+      state.client = users.length ? users[0].id : null;
+    }
+
+    // ---------- Меню ----------
+    async function loadMenu() {
+      const [products, restaurants] = await Promise.all([api("/api/products"), api("/api/restaurants")]);
+      state.products = products;
+      state.restaurants = restaurants;
+      renderMenu();
+    }
+
+    function renderMenu() {
+      const panel = $("#panel-menu");
+      panel.innerHTML = "";
+      for (const r of state.restaurants) {
+        const items = state.products.filter(p => p.restaurantId === r.id);
+        if (!items.length) continue;
+
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const title = document.createElement("div");
+        title.className = "restaurant-title";
+        title.textContent = r.name;
+        card.appendChild(title);
+
+        const tag = document.createElement("div");
+        tag.className = "district-tag";
+        tag.textContent = DISTRICT_LABELS[r.district] || r.district;
+        card.appendChild(tag);
+
+        const table = document.createElement("table");
+        table.className = "menu-table";
+        for (const p of items) {
+          const tr = document.createElement("tr");
+
+          const nameTd = document.createElement("td");
+          nameTd.textContent = p.name;
+
+          const priceTd = document.createElement("td");
+          priceTd.className = "price";
+          priceTd.style.textAlign = "right";
+          priceTd.textContent = fmtPrice(p.price);
+
+          const btnTd = document.createElement("td");
+          btnTd.style.width = "120px";
+          btnTd.style.textAlign = "center";
+          const btn = document.createElement("button");
+          btn.className = "btn";
+          btn.textContent = "В корзину";
+          btn.onclick = async () => {
+            try {
+              await api(`/api/cart/${state.client}/add`, { method: "POST", body: JSON.stringify({ productId: p.id }) });
+              toast(`«${p.name}» добавлено в корзину`);
+              updateCartBadge();
+            } catch (e) { toast(e.message, true); }
+          };
+          btnTd.appendChild(btn);
+
+          tr.append(nameTd, priceTd, btnTd);
+          table.appendChild(tr);
+        }
+        card.appendChild(table);
+        panel.appendChild(card);
+      }
+    }
+
+    // ---------- Корзина ----------
+    async function renderCart() {
+      const panel = $("#panel-cart");
+      panel.innerHTML = "";
+      if (!state.client) return;
+
+      let cart;
+      try {
+        cart = await api(`/api/cart/${state.client}`);
+      } catch (e) { toast(e.message, true); return; }
+
+      updateCartBadgeFrom(cart);
+      const restaurantIds = Object.keys(cart);
+      if (!restaurantIds.length) {
+        panel.innerHTML = '<div class="empty">Корзина пуста. Выберите блюда во вкладке «Меню».</div>';
+        return;
+      }
+
+      for (const rid of restaurantIds) {
+        const items = cart[rid];
+        const restaurant = state.restaurants.find(r => r.id === rid);
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const title = document.createElement("div");
+        title.className = "restaurant-title";
+        title.textContent = restaurant ? restaurant.name : rid;
+        card.appendChild(title);
+
+        for (const p of items) {
+          const row = document.createElement("div");
+          row.className = "cart-item";
+          const name = document.createElement("span");
+          name.textContent = p.name;
+          const price = document.createElement("span");
+          price.className = "price";
+          price.textContent = fmtPrice(p.price);
+          row.append(name, price);
+          card.appendChild(row);
+        }
+
+        const total = items.reduce((s, p) => s + p.price, 0);
+        const sub = document.createElement("div");
+        sub.className = "subtotal";
+        sub.textContent = `Итого: ${fmtPrice(total)}`;
+        card.appendChild(sub);
+
+        // Форма оформления заказа (Strategy/State на бэкенде валидируют переходы)
+        const form = document.createElement("form");
+        form.className = "checkout-form";
+
+        const fromLabel = document.createElement("label");
+        fromLabel.textContent = "Откуда:";
+        const fromSel = districtSelect();
+        fromSel.value = "CENTRAL";
+
+        const toLabel = document.createElement("label");
+        toLabel.textContent = "Куда:";
+        const toSel = districtSelect();
+        toSel.value = "SUBURB";
+
+        form.append(fromLabel, fromSel, toLabel, toSel);
+
+        const submitBtn = document.createElement("button");
+        submitBtn.type = "submit";
+        submitBtn.className = "btn";
+        submitBtn.textContent = "Оформить заказ";
+        form.appendChild(submitBtn);
+
+        form.onsubmit = async (ev) => {
+          ev.preventDefault();
+          try {
+            await api("/api/orders", {
+              method: "POST",
+              body: JSON.stringify({
+                clientId: state.client,
+                restaurantId: rid,
+                fromDistrict: fromSel.value,
+                toDistrict: toSel.value
+              })
+            });
+            toast("Заказ оформлен!");
+            switchTab("orders");
+          } catch (e) { toast(e.message, true); }
+        };
+
+        card.appendChild(form);
+        panel.appendChild(card);
+      }
+
+      const clearBtn = document.createElement("button");
+      clearBtn.className = "btn danger";
+      clearBtn.textContent = "Очистить корзину";
+      clearBtn.onclick = async () => {
+        try {
+          await api(`/api/cart/${state.client}`, { method: "DELETE" });
+          toast("Корзина очищена");
+          renderCart();
+        } catch (e) { toast(e.message, true); }
+      };
+      panel.appendChild(clearBtn);
+    }
+
+    function districtSelect() {
+      const sel = document.createElement("select");
+      for (const [value, label] of Object.entries(DISTRICT_LABELS)) {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        sel.appendChild(opt);
+      }
+      return sel;
+    }
+
+    function updateCartBadgeFrom(cart) {
+      let count = 0;
+      for (const items of Object.values(cart)) count += items.length;
+      setBadge(count);
+    }
+
+    async function updateCartBadge() {
+      if (!state.client) return;
+      try {
+        const cart = await api(`/api/cart/${state.client}`);
+        updateCartBadgeFrom(cart);
+      } catch (e) { /* не критично */ }
+    }
+
+    function setBadge(count) {
+      const badge = $("#cartBadge");
+      badge.textContent = count;
+      badge.classList.toggle("hidden", count === 0);
+    }
+
+    // ---------- Заказы ----------
+    async function renderOrders() {
+      const panel = $("#panel-orders");
+      panel.innerHTML = "";
+      let orders;
+      try {
+        orders = await api("/api/orders");
+      } catch (e) { toast(e.message, true); return; }
+
+      if (!orders.length) {
+        panel.innerHTML = '<div class="empty">Заказов пока нет. Оформите первый заказ из корзины!</div>';
+        return;
+      }
+
+      for (const o of orders) {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const head = document.createElement("div");
+        head.className = "order-head";
+        const idSpan = document.createElement("span");
+        idSpan.style.fontWeight = "700";
+        idSpan.textContent = o.id;
+        const statusEl = document.createElement("span");
+        statusEl.className = `status st-${o.status}`;
+        statusEl.textContent = STATUS_LABELS[o.status] || o.status;
+        head.append(idSpan, statusEl);
+        card.appendChild(head);
+
+        const meta = document.createElement("div");
+        meta.className = "order-meta";
+        const restaurant = state.restaurants.find(r => r.id === o.restaurantId);
+        meta.textContent =
+          `Клиент: ${o.client ? o.client.name : "?"} · Ресторан: ${restaurant ? restaurant.name : o.restaurantId}` +
+          ` · Маршрут: ${DISTRICT_LABELS[o.fromDistrict] || o.fromDistrict} → ${DISTRICT_LABELS[o.toDistrict] || o.toDistrict}` +
+          ` (${o.distanceKm} км) · Сумма: ${fmtPrice(o.totalPrice)} за ${o.products.length} поз.`;
+        card.appendChild(meta);
+
+        const terminal = o.status === "COMPLETED" || o.status === "CANCELLED";
+        if (!terminal) {
+          const actions = document.createElement("div");
+          actions.className = "order-actions";
+          const sel = document.createElement("select");
+          for (const [value, label] of Object.entries(STATUS_LABELS)) {
+            if (value === o.status) continue;
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = "→ " + label;
+            sel.appendChild(opt);
+          }
+          const btn = document.createElement("button");
+          btn.className = "btn secondary";
+          btn.textContent = "Сменить статус";
+          btn.onclick = async () => {
+            try {
+              await api(`/api/orders/${o.id}/status`, {
+                method: "POST",
+                body: JSON.stringify({ status: sel.value })
+              });
+              toast("Статус заказа обновлён");
+              renderOrders();
+            } catch (e) { toast(e.message, true); }
+          };
+          actions.append(sel, btn);
+          card.appendChild(actions);
+        }
+
+        panel.appendChild(card);
+      }
+    }
+
+    // ---------- Переключение вкладок ----------
+    function switchTab(name) {
+      document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+      for (const [id, el] of [["menu", $("#panel-menu")], ["cart", $("#panel-cart")], ["orders", $("#panel-orders")]]) {
+        el.classList.toggle("active", id === name);
+      }
+      if (name === "cart") renderCart();
+      if (name === "orders") renderOrders();
+    }
+
+    // ---------- Инициализация ----------
+    document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+    $("#clientSelect").onchange = (e) => { state.client = e.target.value; updateCartBadge(); };
+
+    (async function init() {
+      try {
+        await loadClients();
+        await loadMenu();
+        updateCartBadge();
+      } catch (e) {
+        toast("Не удалось загрузить данные: " + e.message, true);
+      }
+    })();
+  </script>
+</body>
+</html>
