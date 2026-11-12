@@ -1,62 +1,100 @@
 package com.delivery.service;
 
-import com.delivery.model.*;
-import com.delivery.repository.*;
-import com.delivery.strategy.FlatRateDeliveryStrategy;
 import com.delivery.db.DatabaseManager;
+import com.delivery.model.CartLine;
+import com.delivery.model.Client;
+import com.delivery.model.District;
+import com.delivery.model.Product;
+import com.delivery.model.Restaurant;
+import com.delivery.model.Role;
+import com.delivery.model.User;
+import com.delivery.repository.ClientRepository;
+import com.delivery.repository.ProductRepository;
+import com.delivery.repository.RestaurantRepository;
+import com.delivery.repository.UserRepository;
+import com.delivery.repository.impl.SqliteClientRepository;
+import com.delivery.repository.impl.SqliteDistrictRepository;
+import com.delivery.repository.impl.SqliteProductRepository;
+import com.delivery.repository.impl.SqliteRestaurantRepository;
+import com.delivery.repository.impl.SqliteUserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CartServiceTest {
 
     private CartService cartService;
-    private ProductRepository productRepository;
-    private Client client;
+    private long userId;
+    private long pizzaPlaceId;
+    private long burgerPlaceId;
+    private long pizzaId;
+    private long cokeId;
+    private long burgerId;
 
     @BeforeEach
     void setUp() {
-        // Use a unique in-memory DB for each test to avoid cross-contamination
-        String dbUrl = "jdbc:sqlite::memory:" + java.util.UUID.randomUUID().toString();
-        DatabaseManager db = new DatabaseManager(dbUrl);
-        db.init();
+        // Each test gets a fresh connection, i.e. its own private in-memory database.
+        DatabaseManager db = new DatabaseManager("jdbc:sqlite::memory:");
 
-        productRepository = new SqliteProductRepository(db);
-        cartService = new CartService(); // Cart is in-memory ConcurrentHashMap
+        UserRepository users = new SqliteUserRepository(db.getConnection());
+        ClientRepository clients = new SqliteClientRepository(db.getConnection());
+        SqliteDistrictRepository districts = new SqliteDistrictRepository(db.getConnection());
+        RestaurantRepository restaurants = new SqliteRestaurantRepository(db.getConnection());
+        ProductRepository products = new SqliteProductRepository(db.getConnection());
+        cartService = new CartService(products);
 
-        // Seed some products
-        productRepository.save(new Product("P1", "Pizza", 12.0, "R1"));
-        productRepository.save(new Product("P2", "Coke", 2.5, "R1"));
-        productRepository.save(new Product("P3", "Burger", 10.0, "R2"));
+        District district = new District("Центральный");
+        districts.save(district);
 
-        client = new Client("C1", "Ivan", "+79991234567", "Moscow, Arbat St, 1");
+        Restaurant pizzaPlace = new Restaurant("Pizza Place", "Адрес 1", district.getId());
+        Restaurant burgerPlace = new Restaurant("Burger House", "Адрес 2", district.getId());
+        restaurants.save(pizzaPlace);
+        restaurants.save(burgerPlace);
+        pizzaPlaceId = pizzaPlace.getId();
+        burgerPlaceId = burgerPlace.getId();
+
+        Product pizza = new Product("Pizza", "", 12.0, "", true, pizzaPlaceId);
+        Product coke = new Product("Coke", "", 2.5, "", true, pizzaPlaceId);
+        Product burger = new Product("Burger", "", 10.0, "", true, burgerPlaceId);
+        products.save(pizza);
+        products.save(coke);
+        products.save(burger);
+        pizzaId = pizza.getId();
+        cokeId = coke.getId();
+        burgerId = burger.getId();
+
+        User user = new User("Ivan", "hash", Role.CLIENT);
+        users.save(user);
+        clients.save(new Client(user.getId(), "+79991234567", "Moscow, Arbat St, 1"));
+        userId = user.getId();
     }
 
     @Test
     void splitCartGroupsItemsByRestaurant() {
-        cartService.addToCart(client, productRepository.findById("P1").get());
-        cartService.addToCart(client, productRepository.findById("P2").get());
-        cartService.addToCart(client, productRepository.findById("P3").get());
+        cartService.addToCart(userId, pizzaId);
+        cartService.addToCart(userId, cokeId);
+        cartService.addToCart(userId, burgerId);
 
-        Map<String, List<Product>> split = cartService.getSplitCartByRestaurant(client.getId());
+        Map<Long, List<CartLine>> split = cartService.getSplitByRestaurant(userId);
 
         assertEquals(2, split.size());
-        assertEquals(2, split.get("R1").size());
-        assertEquals(1, split.get("R2").size());
+        assertEquals(2, split.get(pizzaPlaceId).size());
+        assertEquals(1, split.get(burgerPlaceId).size());
     }
 
     @Test
     void clearRestaurantItemsRemovesOnlyThatRestaurantsItems() {
-        cartService.addToCart(client, productRepository.findById("P1").get());
-        cartService.addToCart(client, productRepository.findById("P3").get());
+        cartService.addToCart(userId, pizzaId);
+        cartService.addToCart(userId, burgerId);
 
-        cartService.clearRestaurantItems(client.getId(), "R1");
+        cartService.clearRestaurant(userId, pizzaPlaceId);
 
-        assertTrue(cartService.getItemsForRestaurant(client.getId(), "R1").isEmpty());
-        assertEquals(1, cartService.getItemsForRestaurant(client.getId(), "R2").size());
+        assertTrue(cartService.getLinesForRestaurant(userId, pizzaPlaceId).isEmpty());
+        assertEquals(1, cartService.getLinesForRestaurant(userId, burgerPlaceId).size());
     }
 }

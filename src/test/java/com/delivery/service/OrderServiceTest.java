@@ -1,152 +1,259 @@
 package com.delivery.service;
 
-import com.delivery.model.*;
-import com.delivery.repository.*;
-import com.delivery.strategy.FlatRateDeliveryStrategy;
 import com.delivery.db.DatabaseManager;
+import com.delivery.model.Client;
+import com.delivery.model.Courier;
+import com.delivery.model.District;
+import com.delivery.model.Order;
+import com.delivery.model.OrderStatus;
+import com.delivery.model.Product;
+import com.delivery.model.Restaurant;
+import com.delivery.model.Role;
+import com.delivery.model.User;
+import com.delivery.observer.OrderObserver;
+import com.delivery.repository.ClientRepository;
+import com.delivery.repository.CourierRepository;
+import com.delivery.repository.OrderRepository;
+import com.delivery.repository.ProductRepository;
+import com.delivery.repository.RestaurantRepository;
+import com.delivery.repository.UserRepository;
+import com.delivery.repository.impl.SqliteClientRepository;
+import com.delivery.repository.impl.SqliteCourierRepository;
+import com.delivery.repository.impl.SqliteDistrictRepository;
+import com.delivery.repository.impl.SqliteOrderRepository;
+import com.delivery.repository.impl.SqliteProductRepository;
+import com.delivery.repository.impl.SqliteRestaurantRepository;
+import com.delivery.repository.impl.SqliteUserRepository;
+import com.delivery.strategy.FlatRateDeliveryStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OrderServiceTest {
 
-    private Client client;
-    private Courier courier;
+    private static final String ADDRESS = "Moscow, Arbat St, 1";
+
     private CartService cartService;
     private OrderService orderService;
     private OrderRepository orderRepository;
-    private ProductRepository productRepository;
-    private RestaurantRepository restaurantRepository;
-    private DistrictRepository districtRepository;
-    private CourierRepository courierRepository;
     private UserRepository userRepository;
+    private ClientRepository clientRepository;
+    private CourierRepository courierRepository;
+    private SqliteDistrictRepository districtRepository;
+    private RestaurantRepository restaurantRepository;
+    private ProductRepository productRepository;
+
+    private User clientUser;
+    private User courierUser;
+    private User adminUser;
+    private Courier courier;
+    private Restaurant pizzaPlace;
+    private Restaurant burgerPlace;
+    private Product margherita;
+    private Product burger;
 
     @BeforeEach
     void setUp() {
-        String dbUrl = "jdbc:sqlite::memory:" + java.util.UUID.randomUUID().toString();
-        DatabaseManager db = new DatabaseManager(dbUrl);
-        db.init();
+        // Each test gets a fresh connection, i.e. its own private in-memory database.
+        DatabaseManager db = new DatabaseManager("jdbc:sqlite::memory:");
 
-        // Repositories
-        productRepository = new SqliteProductRepository(db);
-        restaurantRepository = new SqliteRestaurantRepository(db);
-        districtRepository = new SqliteDistrictRepository(db);
-        orderRepository = new SqliteOrderRepository(db);
-        courierRepository = new SqliteCourierRepository(db);
-        userRepository = new SqliteUserRepository(db);
+        UserRepository userRepository = new SqliteUserRepository(db.getConnection());
+        ClientRepository clientRepository = new SqliteClientRepository(db.getConnection());
+        CourierRepository courierRepository = new SqliteCourierRepository(db.getConnection());
+        SqliteDistrictRepository districtRepository = new SqliteDistrictRepository(db.getConnection());
+        RestaurantRepository restaurantRepository = new SqliteRestaurantRepository(db.getConnection());
+        ProductRepository productRepository = new SqliteProductRepository(db.getConnection());
+        orderRepository = new SqliteOrderRepository(db.getConnection());
+        this.userRepository = userRepository;
+        this.clientRepository = clientRepository;
+        this.courierRepository = courierRepository;
+        this.districtRepository = districtRepository;
+        this.restaurantRepository = restaurantRepository;
+        this.productRepository = productRepository;
 
-        // Services & Helpers
-        cartService = new CartService();
-        List<com.delivery.service.OrderObserver> observers = new ArrayList<>(); // Empty list of observers for tests
-
+        cartService = new CartService(productRepository);
+        List<OrderObserver> observers = List.of(); // no notifications in tests
         orderService = new OrderService(
-                orderRepository,
-                new FlatRateDeliveryStrategy(5.0),
-                cartService,
-                observers
-        );
+                orderRepository, clientRepository, productRepository, restaurantRepository,
+                districtRepository, courierRepository, userRepository, cartService,
+                new FlatRateDeliveryStrategy(5.0), observers);
 
-        // Seed Data
-        District central = new District("D1", "Центральный");
-        District suburb = new District("D2", "Пригородный");
-        District outskirts = new District("D3", "Окраинный");
+        // District chain: Центральный — Пригородный — Окраинный (symmetric edges).
+        District central = new District("Центральный");
+        District suburb = new District("Пригородный");
+        District outskirts = new District("Окраинный");
         districtRepository.save(central);
         districtRepository.save(suburb);
         districtRepository.save(outskirts);
-        districtRepository.addNeighbor("D1", "D2");
-        districtRepository.addNeighbor("D2", "D3");
+        districtRepository.addNeighbor(central.getId(), suburb.getId());
+        districtRepository.addNeighbor(suburb.getId(), central.getId());
+        districtRepository.addNeighbor(suburb.getId(), outskirts.getId());
+        districtRepository.addNeighbor(outskirts.getId(), suburb.getId());
 
-        restaurantRepository.save(new Restaurant("R1", "Пицца Маргарита", "Адрес 1", "D1"));
-        productRepository.save(new Product("P1", "Маргарита", 12.0, "R1"));
-        productRepository.save(new Product("P2", "Пепперони", 15.0, "R1"));
+        pizzaPlace = new Restaurant("Пицца Маргарита", "Адрес 1", central.getId());
+        burgerPlace = new Restaurant("Burger House", "Адрес 2", suburb.getId());
+        restaurantRepository.save(pizzaPlace);
+        restaurantRepository.save(burgerPlace);
 
-        userRepository.save(new User("U1", "Ivan", "+79991234567", "Pass", "CLIENT"));
-        client = new Client("U1", "Ivan", "+79991234567", "Moscow, Arbat St, 1");
+        margherita = new Product("Маргарита", "", 12.0, "", true, pizzaPlace.getId());
+        Product pepperoni = new Product("Пепперони", "", 15.0, "", true, pizzaPlace.getId());
+        burger = new Product("Burger", "", 10.0, "", true, burgerPlace.getId());
+        productRepository.save(margherita);
+        productRepository.save(pepperoni);
+        productRepository.save(burger);
 
-        courierRepository.save(new Courier("CO1", "Alex", "+79997654321", "Bicycle", "D1", true));
-        courier = new Courier("CO1", "Alex", "+79997654321", "Bicycle", "D1", true);
+        adminUser = new User("admin", "hash", Role.ADMIN);
+        userRepository.save(adminUser);
+
+        clientUser = new User("Ivan", "hash", Role.CLIENT);
+        userRepository.save(clientUser);
+        clientRepository.save(new Client(clientUser.getId(), "+79991234567", ADDRESS));
+
+        courierUser = new User("Alex", "hash", Role.COURIER);
+        userRepository.save(courierUser);
+        courier = new Courier(courierUser.getId());
+        courier.changeDistrict(central.getId());
+        courier.startShift();
+        courierRepository.save(courier);
+    }
+
+    private Order orderFromCart(Restaurant restaurant) {
+        return orderService.createOrderFromCart(clientUser.getId(), restaurant.getId(), ADDRESS);
     }
 
     @Test
     void fullLifecycleTransitionsSucceed() {
-        cartService.addToCart(client, productRepository.findById("P1").get());
-        Order order = orderService.createOrderFromCart(client, "R1", "D1", "D2", 5.0);
+        cartService.addToCart(clientUser.getId(), margherita.getId());
+        Order order = orderFromCart(pizzaPlace);
+        assertEquals(17.0, order.getTotalPrice(), 0.001); // 12.0 goods + 5.0 flat fee
 
-        orderService.updateOrderStatus(order, OrderStatus.COOKING, client);
-        orderService.updateOrderStatus(order, OrderStatus.READY_FOR_DELIVERY, client);
-        orderService.updateOrderStatus(order, OrderStatus.DELIVERING, courier);
-        orderService.updateOrderStatus(order, OrderStatus.COMPLETED, courier);
+        orderService.updateStatus(order.getId(), OrderStatus.COOKING, adminUser.getId());
+        orderService.updateStatus(order.getId(), OrderStatus.READY_FOR_DELIVERY, adminUser.getId());
+        orderService.updateStatus(order.getId(), OrderStatus.DELIVERING, courierUser.getId());
+        Order completed = orderService.updateStatus(
+                order.getId(), OrderStatus.COMPLETED, courierUser.getId());
 
-        assertEquals(OrderStatus.COMPLETED, order.getStatus());
+        assertEquals(OrderStatus.COMPLETED, completed.getStatus());
+        assertEquals(courier.getId(), completed.getCourierId().longValue());
     }
 
     @Test
     void skippingStepsIsRejected() {
-        cartService.addToCart(client, productRepository.findById("P1").get());
-        Order order = orderService.createOrderFromCart(client, "R1", "D1", "D2", 5.0);
+        cartService.addToCart(clientUser.getId(), margherita.getId());
+        Order order = orderFromCart(pizzaPlace);
+        orderService.updateStatus(order.getId(), OrderStatus.COOKING, adminUser.getId());
 
+        // COOKING -> DELIVERING skips READY_FOR_DELIVERY.
         assertThrows(IllegalStateException.class, () ->
-                orderService.updateOrderStatus(order, OrderStatus.COMPLETED, courier));
-        assertEquals(OrderStatus.CREATED, order.getStatus());
+                orderService.updateStatus(order.getId(), OrderStatus.DELIVERING, courierUser.getId()));
+        assertEquals(OrderStatus.COOKING,
+                orderRepository.findById(order.getId()).orElseThrow().getStatus());
     }
 
     @Test
     void terminalStatesCannotBeChanged() {
-        cartService.addToCart(client, productRepository.findById("P1").get());
-        Order order = orderService.createOrderFromCart(client, "R1", "D1", "D2", 5.0);
-        orderService.updateOrderStatus(order, OrderStatus.CANCELLED, client);
+        cartService.addToCart(clientUser.getId(), margherita.getId());
+        Order order = orderFromCart(pizzaPlace);
+        orderService.updateStatus(order.getId(), OrderStatus.CANCELLED, clientUser.getId());
 
         assertThrows(IllegalStateException.class, () ->
-                orderService.updateOrderStatus(order, OrderStatus.COMPLETED, courier));
+                orderService.updateStatus(order.getId(), OrderStatus.COMPLETED, courierUser.getId()));
     }
 
     @Test
     void onlyCourierCanStartDeliveryAndComplete() {
-        cartService.addToCart(client, productRepository.findById("P1").get());
-        Order order = orderService.createOrderFromCart(client, "R1", "D1", "D2", 5.0);
-        orderService.updateOrderStatus(order, OrderStatus.COOKING, client);
-        orderService.updateOrderStatus(order, OrderStatus.READY_FOR_DELIVERY, client);
+        cartService.addToCart(clientUser.getId(), margherita.getId());
+        Order order = orderFromCart(pizzaPlace);
+        orderService.updateStatus(order.getId(), OrderStatus.COOKING, adminUser.getId());
+        orderService.updateStatus(order.getId(), OrderStatus.READY_FOR_DELIVERY, adminUser.getId());
 
         assertThrows(IllegalStateException.class, () ->
-                orderService.updateOrderStatus(order, OrderStatus.DELIVERING, client));
+                orderService.updateStatus(order.getId(), OrderStatus.DELIVERING, clientUser.getId()));
+        assertThrows(IllegalStateException.class, () ->
+                orderService.updateStatus(order.getId(), OrderStatus.DELIVERING, adminUser.getId()));
     }
 
     @Test
     void regressionTestRehydrateBugFix() {
-        cartService.addToCart(client, productRepository.findById("P1").get());
-        Order order = orderService.createOrderFromCart(client, "R1", "D1", "D2", 5.0);
+        cartService.addToCart(clientUser.getId(), margherita.getId());
+        Order order = orderFromCart(pizzaPlace);
 
-        // Advance to COOKING
-        orderService.updateOrderStatus(order, OrderStatus.COOKING, client);
+        orderService.updateStatus(order.getId(), OrderStatus.COOKING, adminUser.getId());
 
-        // The original bug was that findById would return an order without products if status changed
-        Order found = orderRepository.findById(order.getId());
-        assertNotNull(found);
+        // The original bug: findById returned an order without items once status advanced.
+        Order found = orderRepository.findById(order.getId()).orElseThrow();
         assertEquals(OrderStatus.COOKING, found.getStatus());
-        assertEquals(1, found.getProducts().size(), "Products should still be present in COOKING state");
+        assertEquals(1, found.getItems().size(), "Items should still be present in COOKING state");
     }
 
     @Test
     void cartIsSplitByRestaurantAndOnlyOrderedItemsAreCleared() {
-        productRepository.save(new Product("P3", "Burger", 10.0, "R2"));
-        restaurantRepository.save(new Restaurant("R2", "Burger House", "Адрес 2", "D2"));
+        cartService.addToCart(clientUser.getId(), margherita.getId());
+        cartService.addToCart(clientUser.getId(), burger.getId());
 
-        cartService.addToCart(client, productRepository.findById("P1").get());
-        cartService.addToCart(client, productRepository.findById("P3").get());
+        Order orderA = orderFromCart(pizzaPlace);
+        assertEquals(1, orderA.getItems().size());
 
-        Order orderA = orderService.createOrderFromCart(client, "R1", "D1", "D2", 5.0);
-        assertEquals(1, orderA.getProducts().size());
+        // The cart is now empty for the pizza place but still holds the burger.
+        Order orderB = orderFromCart(burgerPlace);
+        assertEquals(1, orderB.getItems().size());
 
-        // The cart is now empty for R1 but should still have P3 for R2.
-        Order orderB = orderService.createOrderFromCart(client, "R2", "D2", "D1", 10.0);
-        assertEquals(1, orderB.getProducts().size());
+        // Ordering from the pizza place again fails: its part of the cart is empty.
+        assertThrows(IllegalArgumentException.class, () -> orderFromCart(pizzaPlace));
+    }
 
-        // Attempting to order from R1 again should fail as it's empty in cart.
-        assertThrows(IllegalStateException.class, () ->
-                orderService.createOrderFromCart(client, "R1", "D1", "D2", 5.0));
+    @Test
+    void observersAreNotifiedForOrdersLoadedFromStorage() {
+        List<OrderStatus> seen = new java.util.ArrayList<>();
+        OrderObserver recorder = order -> seen.add(order.getStatus());
+        OrderService service = new OrderService(
+                orderRepository, clientRepository, productRepository, restaurantRepository,
+                districtRepository, courierRepository, userRepository, cartService,
+                new FlatRateDeliveryStrategy(5.0), List.of(recorder));
+
+        cartService.addToCart(clientUser.getId(), margherita.getId());
+        Order order = service.createOrderFromCart(clientUser.getId(), pizzaPlace.getId(), ADDRESS);
+
+        // The order is re-read from the database on every status change: observers
+        // must be re-attached there, otherwise persisted orders notify nobody.
+        service.updateStatus(order.getId(), OrderStatus.COOKING, adminUser.getId());
+        assertEquals(List.of(OrderStatus.COOKING), seen);
+    }
+
+    @Test
+    void updatesSucceedWhenChildRowsReferenceTheEntity() {
+        cartService.addToCart(clientUser.getId(), margherita.getId());
+        Order order = orderFromCart(pizzaPlace);
+        orderService.updateStatus(order.getId(), OrderStatus.COOKING, adminUser.getId());
+        orderService.updateStatus(order.getId(), OrderStatus.READY_FOR_DELIVERY, adminUser.getId());
+        orderService.updateStatus(order.getId(), OrderStatus.DELIVERING, courierUser.getId());
+
+        // orders.id_client -> clients: editing the profile must not break the FK.
+        UserService userService = new UserService(userRepository, clientRepository);
+        Client updated = userService.updateClientProfile(
+                clientUser.getId(), null, "+7 999 000-00-00", "New address, 1");
+        assertEquals("New address, 1", updated.getDefaultAddress());
+
+        // orders.id_courier -> couriers: ending the shift must persist.
+        CourierService courierService = new CourierService(
+                userRepository, courierRepository, districtRepository);
+        assertFalse(courierService.endShift(courierUser.getId()).isOnShift());
+
+        // order_items.id_product -> products: admin price edit must persist.
+        CatalogService catalogService = new CatalogService(
+                userRepository, restaurantRepository, productRepository);
+        Product edited = catalogService.updateProductAsAdmin(
+                adminUser.getId(), margherita.getId(), null, null, 99.0, null);
+        assertEquals(99.0, edited.getPrice(), 0.001);
+
+        // The order itself must still be readable with its items intact.
+        Order found = orderRepository.findById(order.getId()).orElseThrow();
+        assertEquals(OrderStatus.DELIVERING, found.getStatus());
+        assertEquals(1, found.getItems().size());
     }
 }

@@ -34,11 +34,11 @@
     }
     .logo { font-size: 22px; font-weight: 700; }
     .client-box { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
-    select, button {
+    select, button, input {
       font-family: inherit;
       font-size: 14px;
     }
-    select {
+    select, input[type="text"] {
       padding: 6px 10px;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -99,12 +99,14 @@
     button.btn.danger:hover { background: #ffd3ce; }
     button.btn:disabled { opacity: .5; cursor: default; }
 
-    .cart-item { display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+    .cart-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
     .cart-item:last-of-type { border-bottom: none; }
+    .cart-item .qty { color: var(--muted); font-size: 13px; }
     .subtotal { margin-top: 10px; text-align: right; font-weight: 700; }
 
     .checkout-form { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
     .checkout-form label { font-size: 13px; color: var(--muted); }
+    .checkout-form input[type="text"] { flex: 1; min-width: 220px; }
 
     .badge {
       display: inline-block;
@@ -134,6 +136,8 @@
 
     .order-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .order-meta { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.5; }
+    .order-items { margin-top: 8px; font-size: 13px; color: var(--text); }
+    .order-items div { padding: 2px 0; }
     .order-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
 
     .empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 15px; }
@@ -158,8 +162,8 @@
   <header>
     <div class="logo">🍔 NyamNyam</div>
     <div class="client-box">
-      <label for="clientSelect">Клиент:</label>
-      <select id="clientSelect"></select>
+      <label for="userSelect">Пользователь:</label>
+      <select id="userSelect"></select>
     </div>
   </header>
 
@@ -184,18 +188,13 @@
     const STATUS_LABELS = {
       CREATED: "Создан",
       COOKING: "Готовится",
-      READY_FOR_DELIVERY: "Готов к доставке",
-      DELIVERING: "В пути",
+      READY_FOR_DELIVERY: "Готов к выдаче",
+      DELIVERING: "В доставке",
       COMPLETED: "Доставлен",
       CANCELLED: "Отменён"
     };
-    const DISTRICT_LABELS = {
-      CENTRAL: "Центр",
-      SUBURB: "Пригород",
-      OUTSKIRTS: "Окраина"
-    };
 
-    let state = { client: null, products: [], restaurants: [] };
+    let state = { user: null, products: [], restaurants: [] };
 
     // ---------- Утилиты ----------
     const $ = (sel) => document.querySelector(sel);
@@ -206,13 +205,14 @@
         ...options
       });
       if (!res.ok) {
-        let message;
+        // Read the body once: res.json() consumes the stream, so a follow-up
+        // res.text() would throw "body stream already read".
+        const text = await res.text();
+        let message = text || res.statusText;
         try {
-          const body = await res.json();
+          const body = JSON.parse(text);
           message = body.error || JSON.stringify(body);
-        } catch (e) {
-          message = await res.text() || res.statusText;
-        }
+        } catch (e) { /* non-JSON error body — keep the raw text */ }
         throw new Error(message);
       }
       if (res.status === 204) return null;
@@ -231,18 +231,22 @@
 
     const fmtPrice = (v) => v.toFixed(2).replace(".", ",") + " ₽";
 
-    // ---------- Клиенты ----------
-    async function loadClients() {
-      const users = await api("/users");
-      const select = $("#clientSelect");
+    // ---------- Пользователи ----------
+    async function loadUsers() {
+      const users = await api("/api/users");
+      const select = $("#userSelect");
       select.innerHTML = "";
       for (const u of users) {
         const opt = document.createElement("option");
         opt.value = u.id;
-        opt.textContent = `${u.name} (${u.phoneNumber})`;
+        opt.textContent = `${u.username} (${u.role})`;
         select.appendChild(opt);
       }
-      state.client = users.length ? users[0].id : null;
+      // Default actor: the first client (only clients can check out).
+      const firstClient = users.find(u => u.role === "client");
+      const defaultUser = firstClient || users[0];
+      state.user = defaultUser ? defaultUser.id : null;
+      if (defaultUser) select.value = String(defaultUser.id);
     }
 
     // ---------- Меню ----------
@@ -257,7 +261,7 @@
       const panel = $("#panel-menu");
       panel.innerHTML = "";
       for (const r of state.restaurants) {
-        const items = state.products.filter(p => p.restaurantId === r.id);
+        const items = state.products.filter(p => p.restaurantId === r.id && p.isAvailable);
         if (!items.length) continue;
 
         const card = document.createElement("div");
@@ -270,7 +274,7 @@
 
         const tag = document.createElement("div");
         tag.className = "district-tag";
-        tag.textContent = DISTRICT_LABELS[r.district] || r.district;
+        tag.textContent = r.districtName;
         card.appendChild(tag);
 
         const table = document.createElement("table");
@@ -294,7 +298,7 @@
           btn.textContent = "В корзину";
           btn.onclick = async () => {
             try {
-              await api(`/api/cart/${state.client}/add`, { method: "POST", body: JSON.stringify({ productId: p.id }) });
+              await api(`/api/cart/${state.user}/add`, { method: "POST", body: JSON.stringify({ productId: p.id }) });
               toast(`«${p.name}» добавлено в корзину`);
               updateCartBadge();
             } catch (e) { toast(e.message, true); }
@@ -313,11 +317,11 @@
     async function renderCart() {
       const panel = $("#panel-cart");
       panel.innerHTML = "";
-      if (!state.client) return;
+      if (!state.user) return;
 
       let cart;
       try {
-        cart = await api(`/api/cart/${state.client}`);
+        cart = await api(`/api/cart/${state.user}`);
       } catch (e) { toast(e.message, true); return; }
 
       updateCartBadgeFrom(cart);
@@ -327,9 +331,16 @@
         return;
       }
 
+      // Prefill the delivery address from the client profile (clients only).
+      let defaultAddress = "";
+      try {
+        const profile = await api(`/api/clients/${state.user}`);
+        defaultAddress = profile.defaultAddress || "";
+      } catch (e) { /* not a client — leave the field empty */ }
+
       for (const rid of restaurantIds) {
         const items = cart[rid];
-        const restaurant = state.restaurants.find(r => r.id === rid);
+        const restaurant = state.restaurants.find(r => r.id === Number(rid));
         const card = document.createElement("div");
         card.className = "card";
 
@@ -338,45 +349,56 @@
         title.textContent = restaurant ? restaurant.name : rid;
         card.appendChild(title);
 
-        for (const p of items) {
+        for (const line of items) {
           const row = document.createElement("div");
           row.className = "cart-item";
+
           const name = document.createElement("span");
-          name.textContent = p.name;
+          name.textContent = line.name;
+          const qty = document.createElement("span");
+          qty.className = "qty";
+          qty.textContent = `× ${line.quantity}`;
           const price = document.createElement("span");
           price.className = "price";
-          price.textContent = fmtPrice(p.price);
-          row.append(name, price);
+          price.textContent = fmtPrice(line.lineTotal);
+
+          const removeBtn = document.createElement("button");
+          removeBtn.className = "btn danger";
+          removeBtn.textContent = "Убрать";
+          removeBtn.onclick = async () => {
+            try {
+              await api(`/api/cart/${state.user}/item/${line.productId}`, { method: "DELETE" });
+              renderCart();
+            } catch (e) { toast(e.message, true); }
+          };
+
+          row.append(name, qty, price, removeBtn);
           card.appendChild(row);
         }
 
-        const total = items.reduce((s, p) => s + p.price, 0);
+        const total = items.reduce((s, line) => s + line.lineTotal, 0);
         const sub = document.createElement("div");
         sub.className = "subtotal";
-        sub.textContent = `Итого: ${fmtPrice(total)}`;
+        sub.textContent = `Итого: ${fmtPrice(total)} + доставка`;
         card.appendChild(sub);
 
-        // Форма оформления заказа (Strategy/State на бэкенде валидируют переходы)
+        // Checkout: one restaurant's part of the cart becomes one order.
         const form = document.createElement("form");
         form.className = "checkout-form";
 
-        const fromLabel = document.createElement("label");
-        fromLabel.textContent = "Откуда:";
-        const fromSel = districtSelect();
-        fromSel.value = "CENTRAL";
-
-        const toLabel = document.createElement("label");
-        toLabel.textContent = "Куда:";
-        const toSel = districtSelect();
-        toSel.value = "SUBURB";
-
-        form.append(fromLabel, fromSel, toLabel, toSel);
+        const addrLabel = document.createElement("label");
+        addrLabel.textContent = "Адрес доставки:";
+        const addrInput = document.createElement("input");
+        addrInput.type = "text";
+        addrInput.required = true;
+        addrInput.placeholder = "Улица, дом, квартира";
+        addrInput.value = defaultAddress;
 
         const submitBtn = document.createElement("button");
         submitBtn.type = "submit";
         submitBtn.className = "btn";
         submitBtn.textContent = "Оформить заказ";
-        form.appendChild(submitBtn);
+        form.append(addrLabel, addrInput, submitBtn);
 
         form.onsubmit = async (ev) => {
           ev.preventDefault();
@@ -384,13 +406,13 @@
             await api("/api/orders", {
               method: "POST",
               body: JSON.stringify({
-                clientId: state.client,
-                restaurantId: rid,
-                fromDistrict: fromSel.value,
-                toDistrict: toSel.value
+                userId: state.user,
+                restaurantId: Number(rid),
+                deliveryAddress: addrInput.value
               })
             });
             toast("Заказ оформлен!");
+            updateCartBadge();
             switchTab("orders");
           } catch (e) { toast(e.message, true); }
         };
@@ -404,7 +426,7 @@
       clearBtn.textContent = "Очистить корзину";
       clearBtn.onclick = async () => {
         try {
-          await api(`/api/cart/${state.client}`, { method: "DELETE" });
+          await api(`/api/cart/${state.user}`, { method: "DELETE" });
           toast("Корзина очищена");
           renderCart();
         } catch (e) { toast(e.message, true); }
@@ -412,27 +434,18 @@
       panel.appendChild(clearBtn);
     }
 
-    function districtSelect() {
-      const sel = document.createElement("select");
-      for (const [value, label] of Object.entries(DISTRICT_LABELS)) {
-        const opt = document.createElement("option");
-        opt.value = value;
-        opt.textContent = label;
-        sel.appendChild(opt);
-      }
-      return sel;
-    }
-
     function updateCartBadgeFrom(cart) {
       let count = 0;
-      for (const items of Object.values(cart)) count += items.length;
+      for (const items of Object.values(cart)) {
+        for (const line of items) count += line.quantity;
+      }
       setBadge(count);
     }
 
     async function updateCartBadge() {
-      if (!state.client) return;
+      if (!state.user) return;
       try {
-        const cart = await api(`/api/cart/${state.client}`);
+        const cart = await api(`/api/cart/${state.user}`);
         updateCartBadgeFrom(cart);
       } catch (e) { /* не критично */ }
     }
@@ -465,21 +478,29 @@
         head.className = "order-head";
         const idSpan = document.createElement("span");
         idSpan.style.fontWeight = "700";
-        idSpan.textContent = o.id;
+        idSpan.textContent = `Заказ №${o.id}`;
         const statusEl = document.createElement("span");
         statusEl.className = `status st-${o.status}`;
-        statusEl.textContent = STATUS_LABELS[o.status] || o.status;
+        statusEl.textContent = o.statusLabelRu || STATUS_LABELS[o.status] || o.status;
         head.append(idSpan, statusEl);
         card.appendChild(head);
 
         const meta = document.createElement("div");
         meta.className = "order-meta";
-        const restaurant = state.restaurants.find(r => r.id === o.restaurantId);
+        const created = new Date(o.createdAt).toLocaleString("ru-RU");
         meta.textContent =
-          `Клиент: ${o.client ? o.client.name : "?"} · Ресторан: ${restaurant ? restaurant.name : o.restaurantId}` +
-          ` · Маршрут: ${DISTRICT_LABELS[o.fromDistrict] || o.fromDistrict} → ${DISTRICT_LABELS[o.toDistrict] || o.toDistrict}` +
-          ` (${o.distanceKm} км) · Сумма: ${fmtPrice(o.totalPrice)} за ${o.products.length} поз.`;
+          `Клиент: ${o.clientName} · Ресторан: ${o.restaurantName} · ${created}` +
+          ` · Адрес: ${o.deliveryAddress} · Сумма: ${fmtPrice(o.totalPrice)}`;
         card.appendChild(meta);
+
+        const itemsEl = document.createElement("div");
+        itemsEl.className = "order-items";
+        for (const item of o.items) {
+          const row = document.createElement("div");
+          row.textContent = `${item.name} × ${item.quantity} — ${fmtPrice(item.priceAtOrder * item.quantity)}`;
+          itemsEl.appendChild(row);
+        }
+        card.appendChild(itemsEl);
 
         const terminal = o.status === "COMPLETED" || o.status === "CANCELLED";
         if (!terminal) {
@@ -487,7 +508,8 @@
           actions.className = "order-actions";
           const sel = document.createElement("select");
           for (const [value, label] of Object.entries(STATUS_LABELS)) {
-            if (value === o.status) continue;
+            // CREATED is the initial state — no transition back to it exists.
+            if (value === o.status || value === "CREATED") continue;
             const opt = document.createElement("option");
             opt.value = value;
             opt.textContent = "→ " + label;
@@ -500,7 +522,7 @@
             try {
               await api(`/api/orders/${o.id}/status`, {
                 method: "POST",
-                body: JSON.stringify({ status: sel.value })
+                body: JSON.stringify({ status: sel.value, actorId: state.user })
               });
               toast("Статус заказа обновлён");
               renderOrders();
@@ -526,11 +548,11 @@
 
     // ---------- Инициализация ----------
     document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
-    $("#clientSelect").onchange = (e) => { state.client = e.target.value; updateCartBadge(); };
+    $("#userSelect").onchange = (e) => { state.user = Number(e.target.value); updateCartBadge(); };
 
     (async function init() {
       try {
-        await loadClients();
+        await loadUsers();
         await loadMenu();
         updateCartBadge();
       } catch (e) {

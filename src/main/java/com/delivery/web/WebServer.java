@@ -92,12 +92,22 @@ public class WebServer {
         // --- Error handling: domain exceptions -> HTTP status codes ---
         // IllegalStateException  = business rule violated (conflict with current state)
         app.exception(IllegalStateException.class, (e, ctx) ->
-                ctx.status(HttpStatus.CONFLICT).json(Map.of("error", e.getMessage())));
+                ctx.status(HttpStatus.CONFLICT).json(errorBody(e)));
         // IllegalArgumentException = bad input / unknown entity
         app.exception(IllegalArgumentException.class, (e, ctx) ->
-                ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", e.getMessage())));
+                ctx.status(HttpStatus.BAD_REQUEST).json(errorBody(e)));
+        // Malformed ids / missing numeric params (NumberFormatException is an
+        // IllegalArgumentException, but Javalin picks the most specific handler).
+        app.exception(NumberFormatException.class, (e, ctx) ->
+                ctx.status(HttpStatus.BAD_REQUEST).json(errorBody(e)));
 
         System.out.println("[WebServer] Frontend available at http://localhost:" + PORT + "/");
+    }
+
+    /** Null-safe error payload: Map.of rejects null values. */
+    private static Map<String, String> errorBody(Exception e) {
+        String message = e.getMessage();
+        return Map.of("error", message != null ? message : e.getClass().getSimpleName());
     }
 
     public void stop() {
