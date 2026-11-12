@@ -39,9 +39,7 @@ import java.util.List;
  * </ul>
  * No reflection anywhere: the repository now calls {@code rehydrate} directly.
  */
-public class Order {
-    /** Assigned by the database on insert; 0 until persisted. */
-    private long id;
+public class Order extends AbstractEntity {
     /** FK -> clients.id (the profile, not the login). */
     private final long clientId;
     /** FK -> restaurants.id: an order always belongs to exactly one restaurant. */
@@ -102,14 +100,6 @@ public class Order {
                                   Instant createdAt, List<OrderItem> items) {
         return new Order(id, clientId, restaurantId, courierId, status,
                 totalPrice, deliveryAddress, createdAt, items);
-    }
-
-    /** Storage-layer hook: records the generated primary key after INSERT. */
-    public void assignId(long id) {
-        if (this.id != 0) {
-            throw new IllegalStateException("Order already has an id: " + this.id);
-        }
-        this.id = id;
     }
 
     /**
@@ -173,10 +163,6 @@ public class Order {
     }
 
     // --- Read access ----------------------------------------------------------
-
-    public long getId() {
-        return id;
-    }
 
     public long getClientId() {
         return clientId;

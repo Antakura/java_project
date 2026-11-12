@@ -28,8 +28,7 @@ public class UserService {
 
     /** @throws IllegalArgumentException if the user does not exist. */
     public User getUserById(long userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        return ServiceGuards.requireUser(userRepository, userId);
     }
 
     /** All users — used by the header selector in the demo UI. */
@@ -52,9 +51,7 @@ public class UserService {
         if (user.getRole() != Role.CLIENT) {
             throw new IllegalStateException("Only clients can edit their profile");
         }
-        Client client = clientRepository.findByIdUser(user.getId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Client profile not found for user " + user.getId()));
+        Client client = ServiceGuards.requireClientProfile(clientRepository, user.getId());
 
         if (newUsername != null && !newUsername.isBlank()) {
             String trimmed = newUsername.trim();

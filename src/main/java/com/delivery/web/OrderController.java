@@ -12,11 +12,14 @@ import com.delivery.repository.ProductRepository;
 import com.delivery.repository.RestaurantRepository;
 import com.delivery.repository.UserRepository;
 import com.delivery.service.OrderService;
+import com.delivery.service.ServiceGuards;
 import com.delivery.web.dto.CreateOrderRequest;
 import com.delivery.web.dto.OrderDto;
 import com.delivery.web.dto.OrderItemDto;
 import com.delivery.web.dto.StatusUpdateRequest;
 import io.javalin.http.Context;
+
+import static com.delivery.web.Contexts.pathId;
 
 import java.util.List;
 
@@ -58,9 +61,8 @@ public class OrderController {
 
     /** GET /api/orders/user/{userId} — the client's own history. */
     public void getClientHistory(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        long userId = pathId(ctx, "userId");
+        User user = ServiceGuards.requireUser(userRepository, userId);
         Client client = clientRepository.findByIdUser(user.getId())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "User " + userId + " has no client profile"));
@@ -80,7 +82,7 @@ public class OrderController {
 
     /** POST /api/orders/{id}/status — role-checked status transition. */
     public void updateStatus(Context ctx) {
-        long orderId = Long.parseLong(ctx.pathParam("id"));
+        long orderId = pathId(ctx, "id");
         StatusUpdateRequest request = ctx.bodyAsClass(StatusUpdateRequest.class);
         OrderStatus newStatus;
         try {

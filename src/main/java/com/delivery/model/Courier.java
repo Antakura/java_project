@@ -15,9 +15,7 @@ package com.delivery.model;
  *   <li>ending an already-ended shift is rejected.</li>
  * </ul>
  */
-public class Courier {
-    /** Assigned by the database on insert; 0 until persisted. */
-    private long id;
+public class Courier extends AbstractEntity {
     /** FK -> users.id: which login this profile belongs to. */
     private final long idUser;
     /** FK -> districts.id, nullable: chosen work district (null = not chosen yet). */
@@ -40,13 +38,6 @@ public class Courier {
         courier.currentDistrictId = currentDistrictId;
         courier.onShift = onShift;
         return courier;
-    }
-
-    public void assignId(long id) {
-        if (this.id != 0) {
-            throw new IllegalStateException("Courier already has an id: " + this.id);
-        }
-        this.id = id;
     }
 
     /** Chooses the district where the courier will work. Only allowed off-shift. */
@@ -79,10 +70,6 @@ public class Courier {
             throw new IllegalStateException("Courier is not on shift");
         }
         this.onShift = false;
-    }
-
-    public long getId() {
-        return id;
     }
 
     public long getIdUser() {

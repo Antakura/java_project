@@ -8,6 +8,8 @@ import com.delivery.web.dto.CourierProfileDto;
 import com.delivery.web.dto.SetDistrictRequest;
 import io.javalin.http.Context;
 
+import static com.delivery.web.Contexts.pathId;
+
 /**
  * Courier endpoints: district choice and shift open/close for the
  * "Страница пользователя" (courier variant).
@@ -24,26 +26,26 @@ public class CourierController {
 
     /** GET /api/couriers/{userId} — the courier profile. */
     public void getProfile(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         ctx.json(toDto(courierService.getProfile(userId)));
     }
 
     /** PUT /api/couriers/{userId}/district — choose the work district (off-shift only). */
     public void setDistrict(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         SetDistrictRequest request = ctx.bodyAsClass(SetDistrictRequest.class);
         ctx.json(toDto(courierService.changeDistrict(userId, request.districtId())));
     }
 
     /** POST /api/couriers/{userId}/shift/start — open a shift. */
     public void startShift(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         ctx.json(toDto(courierService.startShift(userId)));
     }
 
     /** POST /api/couriers/{userId}/shift/end — close the shift. */
     public void endShift(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         ctx.json(toDto(courierService.endShift(userId)));
     }
 

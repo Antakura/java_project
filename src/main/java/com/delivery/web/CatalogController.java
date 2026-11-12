@@ -12,6 +12,8 @@ import com.delivery.web.dto.RestaurantDto;
 import com.delivery.web.dto.UpdateProductRequest;
 import io.javalin.http.Context;
 
+import static com.delivery.web.Contexts.pathId;
+
 import java.util.List;
 import java.util.Map;
 
@@ -43,7 +45,7 @@ public class CatalogController {
 
     /** GET /api/restaurants/{id} — the restaurant page: header + orderable menu. */
     public void getRestaurantMenu(Context ctx) {
-        long id = Long.parseLong(ctx.pathParam("id"));
+        long id = pathId(ctx, "id");
         Restaurant restaurant = catalogService.getRestaurants().stream()
                 .filter(r -> r.getId() == id)
                 .findFirst()
@@ -74,8 +76,12 @@ public class CatalogController {
 
     /** PUT /api/products/{id}?actorId=... — admin edit by id (partial update). */
     public void updateProduct(Context ctx) {
-        long id = Long.parseLong(ctx.pathParam("id"));
-        long actorId = Long.parseLong(ctx.queryParam("actorId"));
+        long id = pathId(ctx, "id");
+        String actorParam = ctx.queryParam("actorId");
+        if (actorParam == null || actorParam.isBlank()) {
+            throw new IllegalArgumentException("Missing required query parameter: actorId");
+        }
+        long actorId = Long.parseLong(actorParam);
         UpdateProductRequest request = ctx.bodyAsClass(UpdateProductRequest.class);
         Product updated = catalogService.updateProductAsAdmin(
                 actorId, id, request.name(), request.description(),

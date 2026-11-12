@@ -8,6 +8,8 @@ import com.delivery.web.dto.AddToCartRequest;
 import com.delivery.web.dto.CartLineDto;
 import io.javalin.http.Context;
 
+import static com.delivery.web.Contexts.pathId;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +31,7 @@ public class CartController {
 
     /** GET /api/cart/{userId} — Map&lt;restaurantId, List&lt;CartLineDto&gt;&gt;. */
     public void getCart(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         Map<Long, List<CartLine>> split = cartService.getSplitByRestaurant(userId);
 
         Map<Long, List<CartLineDto>> result = new LinkedHashMap<>();
@@ -40,7 +42,7 @@ public class CartController {
 
     /** POST /api/cart/{userId}/add — one more unit of a product. */
     public void addToCart(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         AddToCartRequest request = ctx.bodyAsClass(AddToCartRequest.class);
         cartService.addToCart(userId, request.productId());
         ctx.status(204).result();
@@ -48,15 +50,15 @@ public class CartController {
 
     /** DELETE /api/cart/{userId}/item/{productId} — remove a whole line. */
     public void removeItem(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
-        long productId = Long.parseLong(ctx.pathParam("productId"));
+        long userId = pathId(ctx, "userId");
+        long productId = pathId(ctx, "productId");
         cartService.removeItem(userId, productId);
         ctx.status(204).result();
     }
 
     /** DELETE /api/cart/{userId} — empty the whole cart. */
     public void clearCart(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         cartService.clearCart(userId);
         ctx.status(204).result();
     }

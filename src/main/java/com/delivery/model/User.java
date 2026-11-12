@@ -19,9 +19,7 @@ package com.delivery.model;
  *       (demonstration level; a production system would use bcrypt/argon2).</li>
  * </ul>
  */
-public class User {
-    /** Assigned by the database on insert; 0 until persisted. */
-    private long id;
+public class User extends AbstractEntity {
     private String username;
     private final String passwordHash;
     private final Role role;
@@ -39,21 +37,6 @@ public class User {
     }
 
     /**
-     * Storage-layer hook: fills in the generated primary key after INSERT.
-     *
-     * <p>Intentionally public (and only this method) because the persistence layer
-     * lives in another package and must record the AUTOINCREMENT value. The invariant
-     * is enforced inside the class: an id can be assigned exactly once, which keeps
-     * the entity immutable for all practical purposes.</p>
-     */
-    public void assignId(long id) {
-        if (this.id != 0) {
-            throw new IllegalStateException("User already has an id: " + this.id);
-        }
-        this.id = id;
-    }
-
-    /**
      * Renames the login. The only business mutation a user ever needs:
      * the "Страница пользователя" lets a client change their name.
      */
@@ -62,10 +45,6 @@ public class User {
             throw new IllegalArgumentException("Username must not be blank");
         }
         this.username = username.trim();
-    }
-
-    public long getId() {
-        return id;
     }
 
     public String getUsername() {

@@ -11,9 +11,7 @@ package com.delivery.model;
  * (the "Страница пользователя" lets a client change them). Changes go through
  * validating methods, never through public fields.</p>
  */
-public class Client {
-    /** Assigned by the database on insert; 0 until persisted. */
-    private long id;
+public class Client extends AbstractEntity {
     /** FK -> users.id: which login this profile belongs to. */
     private final long idUser;
     private String phone;
@@ -26,13 +24,6 @@ public class Client {
         this.idUser = idUser;
         this.phone = normalizePhone(phone);
         this.defaultAddress = normalizeAddress(defaultAddress);
-    }
-
-    public void assignId(long id) {
-        if (this.id != 0) {
-            throw new IllegalStateException("Client already has an id: " + this.id);
-        }
-        this.id = id;
     }
 
     /** Business rule: a client must always have a reachable phone number. */
@@ -57,10 +48,6 @@ public class Client {
             throw new IllegalArgumentException("Client default address must not be blank");
         }
         return address.trim();
-    }
-
-    public long getId() {
-        return id;
     }
 
     public long getIdUser() {

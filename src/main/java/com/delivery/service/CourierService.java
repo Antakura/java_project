@@ -31,9 +31,7 @@ public class CourierService {
     /** The courier profile of a user (must be a COURIER). */
     public Courier getProfile(long userId) {
         User user = requireCourierUser(userId);
-        return courierRepository.findByIdUser(user.getId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Courier profile not found for user " + user.getId()));
+        return ServiceGuards.requireCourierProfile(courierRepository, user.getId());
     }
 
     /** Chooses the work district. Rejected while on shift (model invariant). */
@@ -66,8 +64,7 @@ public class CourierService {
     }
 
     private User requireCourierUser(long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        User user = ServiceGuards.requireUser(userRepository, userId);
         if (user.getRole() != Role.COURIER) {
             throw new IllegalStateException(
                     "User " + user.getUsername() + " is not a courier");

@@ -7,9 +7,7 @@ package com.delivery.model;
  * table instead of an enum constant, matching the target schema. Restaurants are
  * immutable: per the specification only products are edited by the admin.</p>
  */
-public class Restaurant {
-    /** Assigned by the database on insert; 0 until persisted. */
-    private long id;
+public class Restaurant extends AbstractEntity {
     private final String name;
     private final String address;
     /** FK -> districts.id. */
@@ -28,17 +26,6 @@ public class Restaurant {
         this.name = name.trim();
         this.address = address.trim();
         this.districtId = districtId;
-    }
-
-    public void assignId(long id) {
-        if (this.id != 0) {
-            throw new IllegalStateException("Restaurant already has an id: " + this.id);
-        }
-        this.id = id;
-    }
-
-    public long getId() {
-        return id;
     }
 
     public String getName() {

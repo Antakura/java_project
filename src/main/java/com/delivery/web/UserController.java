@@ -9,6 +9,8 @@ import com.delivery.web.dto.UpdateClientProfileRequest;
 import com.delivery.web.dto.UserDto;
 import io.javalin.http.Context;
 
+import static com.delivery.web.Contexts.pathId;
+
 import java.util.List;
 
 /**
@@ -37,7 +39,7 @@ public class UserController {
 
     /** GET /api/clients/{userId} — the client profile for the user page. */
     public void getClientProfile(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         User user = userService.getUserById(userId);
         Client client = clientRepository.findByIdUser(user.getId())
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -47,7 +49,7 @@ public class UserController {
 
     /** PUT /api/clients/{userId}/profile — rename / phone / address. */
     public void updateProfile(Context ctx) {
-        long userId = Long.parseLong(ctx.pathParam("userId"));
+        long userId = pathId(ctx, "userId");
         UpdateClientProfileRequest request = ctx.bodyAsClass(UpdateClientProfileRequest.class);
         Client updated = userService.updateClientProfile(
                 userId, request.username(), request.phone(), request.address());

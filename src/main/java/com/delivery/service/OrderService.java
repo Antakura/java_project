@@ -93,15 +93,12 @@ public class OrderService {
      * they become separate orders).</p>
      */
     public Order createOrderFromCart(long clientUserId, long restaurantId, String deliveryAddress) {
-        User user = requireUser(clientUserId);
+        User user = ServiceGuards.requireUser(userRepository, clientUserId);
         if (user.getRole() != Role.CLIENT) {
             throw new IllegalStateException("Only clients can place orders");
         }
-        Client client = clientRepository.findByIdUser(user.getId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Client profile not found for user " + user.getId()));
-        restaurantRepository.findById(restaurantId)
-                .orElseThrow(() -> new IllegalArgumentException("Restaurant not found: " + restaurantId));
+        Client client = ServiceGuards.requireClientProfile(clientRepository, user.getId());
+        ServiceGuards.requireRestaurant(restaurantRepository, restaurantId);
 
         List<CartLine> lines = cartService.getLinesForRestaurant(clientUserId, restaurantId);
         if (lines.isEmpty()) {
@@ -112,9 +109,7 @@ public class OrderService {
         double goodsTotal = 0.0;
         List<OrderItem> items = new ArrayList<>();
         for (CartLine line : lines) {
-            Product product = productRepository.findById(line.getProductId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Product not found: " + line.getProductId()));
+            Product product = ServiceGuards.requireProduct(productRepository, line.getProductId());
             if (!product.isAvailable()) {
                 throw new IllegalStateException("Product is no longer available: " + product.getName());
             }
@@ -151,11 +146,16 @@ public class OrderService {
     public Order updateStatus(long orderId, OrderStatus newStatus, long actorUserId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new IllegalArgumentException("Order not found: " + orderId));
-        User actor = requireUser(actorUserId);
+        // Rehydrated orders carry no observers: attach them so status changes of
+        // persisted orders fan out exactly like freshly created ones.
+        for (OrderObserver observer : observers) {
+            order.addObserver(observer);
+        }
+        User actor = ServiceGuards.requireUser(userRepository, actorUserId);
 
         switch (newStatus) {
             case COOKING, READY_FOR_DELIVERY ->
-                    requireRole(actor, Role.ADMIN, "advance the order to \"" + newStatus.labelRu() + "\"");
+                    ServiceGuards.requireRole(actor, Role.ADMIN, "advance the order to \"" + newStatus.labelRu() + "\"");
             case DELIVERING -> {
                 Courier courier = eligibleCourierForRestaurant(actor, order.getRestaurantId());
                 // Bind the courier before the transition: id_courier is filled exactly once.
@@ -198,24 +198,9 @@ public class OrderService {
 
     // --- helpers --------------------------------------------------------------
 
-    private User requireUser(long userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
-    }
-
-    private void requireRole(User user, Role expected, String action) {
-        if (user.getRole() != expected) {
-            throw new IllegalStateException(
-                    "User " + user.getUsername() + " (" + user.getRole().getDbValue()
-                            + ") cannot " + action);
-        }
-    }
-
     private Courier requireCourierProfile(User actor) {
-        requireRole(actor, Role.COURIER, "complete a delivery");
-        return courierRepository.findByIdUser(actor.getId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Courier profile not found for user " + actor.getId()));
+        ServiceGuards.requireRole(actor, Role.COURIER, "complete a delivery");
+        return ServiceGuards.requireCourierProfile(courierRepository, actor.getId());
     }
 
     /**
@@ -223,15 +208,12 @@ public class OrderService {
      * district OR a neighbor of it).
      */
     private Courier eligibleCourierForRestaurant(User actor, long restaurantId) {
-        requireRole(actor, Role.COURIER, "take a delivery");
-        Courier courier = courierRepository.findByIdUser(actor.getId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Courier profile not found for user " + actor.getId()));
+        ServiceGuards.requireRole(actor, Role.COURIER, "take a delivery");
+        Courier courier = ServiceGuards.requireCourierProfile(courierRepository, actor.getId());
         if (!courier.isOnShift()) {
             throw new IllegalStateException("The courier is not on shift");
         }
-        Restaurant restaurant = restaurantRepository.findById(restaurantId)
-                .orElseThrow(() -> new IllegalArgumentException("Restaurant not found: " + restaurantId));
+        Restaurant restaurant = ServiceGuards.requireRestaurant(restaurantRepository, restaurantId);
 
         Set<Long> allowedDistricts = new HashSet<>(
                 districtRepository.findNeighborIds(restaurant.getDistrictId()));

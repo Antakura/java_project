@@ -10,9 +10,7 @@ package com.delivery.model;
  * (see the reworked Strategy package), while the neighbor graph now drives courier
  * eligibility in {@code OrderService}.</p>
  */
-public class District {
-    /** Assigned by the database on insert; 0 until persisted. */
-    private long id;
+public class District extends AbstractEntity {
     private final String name;
 
     public District(String name) {
@@ -20,17 +18,6 @@ public class District {
             throw new IllegalArgumentException("District name must not be blank");
         }
         this.name = name.trim();
-    }
-
-    public void assignId(long id) {
-        if (this.id != 0) {
-            throw new IllegalStateException("District already has an id: " + this.id);
-        }
-        this.id = id;
-    }
-
-    public long getId() {
-        return id;
     }
 
     public String getName() {

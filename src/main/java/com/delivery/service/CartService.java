@@ -40,8 +40,7 @@ public class CartService {
         if (userId <= 0) {
             throw new IllegalArgumentException("Invalid user id: " + userId);
         }
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId));
+        Product product = ServiceGuards.requireProduct(productRepository, productId);
         if (!product.isAvailable()) {
             throw new IllegalStateException("Product is not available: " + product.getName());
         }
@@ -98,7 +97,8 @@ public class CartService {
         }
         cart.entrySet().removeIf(entry -> {
             Product product = productRepository.findById(entry.getKey()).orElse(null);
-            return product != null && product.getRestaurantId() == restaurantId;
+            // Deleted products leave stale lines: drop them too, they can never be checked out.
+            return product == null || product.getRestaurantId() == restaurantId;
         });
     }
 }

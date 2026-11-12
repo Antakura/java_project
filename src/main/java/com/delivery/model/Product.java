@@ -8,9 +8,7 @@ package com.delivery.model;
  * (encapsulation). The identity ({@code id}) and the owning restaurant
  * ({@code restaurantId}) never change after creation.</p>
  */
-public class Product {
-    /** Assigned by the database on insert; 0 until persisted. */
-    private long id;
+public class Product extends AbstractEntity {
     private String name;
     private String description;
     private double price;
@@ -38,13 +36,6 @@ public class Product {
         this.restaurantId = restaurantId;
     }
 
-    public void assignId(long id) {
-        if (this.id != 0) {
-            throw new IllegalStateException("Product already has an id: " + this.id);
-        }
-        this.id = id;
-    }
-
     /** Admin edit: rename the product. */
     public void updateName(String name) {
         if (name == null || name.isBlank()) {
@@ -69,10 +60,6 @@ public class Product {
     /** Admin edit: toggle availability (hidden from the menu when false). */
     public void setAvailable(boolean available) {
         this.available = available;
-    }
-
-    public long getId() {
-        return id;
     }
 
     public String getName() {
