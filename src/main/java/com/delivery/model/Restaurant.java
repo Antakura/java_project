@@ -1,20 +1,43 @@
 package com.delivery.model;
 
 /**
- * Represents a restaurant in the system.
+ * A restaurant that sells products.
+ *
+ * <p>The district is now a foreign key ({@code id_district}) to the {@code districts}
+ * table instead of an enum constant, matching the target schema. Restaurants are
+ * immutable: per the specification only products are edited by the admin.</p>
  */
 public class Restaurant {
-    private final String id;
+    /** Assigned by the database on insert; 0 until persisted. */
+    private long id;
     private final String name;
-    private final District district;
+    private final String address;
+    /** FK -> districts.id. */
+    private final long districtId;
 
-    public Restaurant(String id, String name, District district) {
-        this.id = id;
-        this.name = name;
-        this.district = district;
+    public Restaurant(String name, String address, long districtId) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Restaurant name must not be blank");
+        }
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("Restaurant address must not be blank");
+        }
+        if (districtId <= 0) {
+            throw new IllegalArgumentException("Restaurant must belong to a district");
+        }
+        this.name = name.trim();
+        this.address = address.trim();
+        this.districtId = districtId;
     }
 
-    public String getId() {
+    public void assignId(long id) {
+        if (this.id != 0) {
+            throw new IllegalStateException("Restaurant already has an id: " + this.id);
+        }
+        this.id = id;
+    }
+
+    public long getId() {
         return id;
     }
 
@@ -22,12 +45,16 @@ public class Restaurant {
         return name;
     }
 
-    public District getDistrict() {
-        return district;
+    public String getAddress() {
+        return address;
+    }
+
+    public long getDistrictId() {
+        return districtId;
     }
 
     @Override
     public String toString() {
-        return name + " (" + district + ")";
+        return "Restaurant[id=" + id + ", name=" + name + ", district=" + districtId + "]";
     }
 }

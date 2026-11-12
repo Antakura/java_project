@@ -1,91 +1,128 @@
 package com.delivery.web;
 
 import com.delivery.model.Client;
-import com.delivery.model.Courier;
-import com.delivery.model.District;
 import com.delivery.model.Order;
+import com.delivery.model.OrderItem;
 import com.delivery.model.OrderStatus;
+import com.delivery.model.Product;
+import com.delivery.model.Restaurant;
+import com.delivery.model.User;
+import com.delivery.repository.ClientRepository;
+import com.delivery.repository.ProductRepository;
+import com.delivery.repository.RestaurantRepository;
+import com.delivery.repository.UserRepository;
 import com.delivery.service.OrderService;
-import com.delivery.service.UserService;
 import com.delivery.web.dto.CreateOrderRequest;
+import com.delivery.web.dto.OrderDto;
+import com.delivery.web.dto.OrderItemDto;
 import com.delivery.web.dto.StatusUpdateRequest;
 import io.javalin.http.Context;
 
 import java.util.List;
 
 /**
- * Controller for the order lifecycle: creation from cart and status transitions.
- * Status changes go through OrderService, which enforces the state machine
- * (State pattern) defined in ALLOWED_TRANSITIONS.
+ * Order endpoints: checkout, history and status transitions.
+ *
+ * <p>This is the endpoint family that used to crash with
+ * "Cannot add products to an order that is already COOKING": every read now goes
+ * through {@code Order.rehydrate(...)} in the repository, so listing orders works
+ * at any lifecycle stage.</p>
  */
 public class OrderController {
-    private final OrderService orderService;
-    private final UserService userService;
-    private final Courier courierActor;
 
-    public OrderController(OrderService orderService, UserService userService, Courier courierActor) {
+    private final OrderService orderService;
+    private final ClientRepository clientRepository;
+    private final UserRepository userRepository;
+    private final RestaurantRepository restaurantRepository;
+    private final ProductRepository productRepository;
+
+    public OrderController(OrderService orderService,
+                           ClientRepository clientRepository,
+                           UserRepository userRepository,
+                           RestaurantRepository restaurantRepository,
+                           ProductRepository productRepository) {
         this.orderService = orderService;
-        this.userService = userService;
-        this.courierActor = courierActor;
+        this.clientRepository = clientRepository;
+        this.userRepository = userRepository;
+        this.restaurantRepository = restaurantRepository;
+        this.productRepository = productRepository;
     }
 
-    /** GET /api/orders */
+    /** GET /api/orders — all orders (admin view). */
     public void getAllOrders(Context ctx) {
-        List<Order> orders = orderService.getAllOrders();
+        List<OrderDto> orders = orderService.getAllOrders().stream()
+                .map(this::toDto)
+                .toList();
         ctx.json(orders);
     }
 
-    /** POST /api/orders  body: CreateOrderRequest */
-    public void createOrder(Context ctx) {
-        CreateOrderRequest request = ctx.bodyAsClass(CreateOrderRequest.class);
-        if (request == null || request.clientId() == null || request.restaurantId() == null
-                || request.fromDistrict() == null || request.toDistrict() == null) {
-            throw new IllegalArgumentException("Invalid order payload: clientId, restaurantId, fromDistrict and toDistrict are required.");
-        }
-
-        var userOpt = userService.getUser(request.clientId());
-        if (!(userOpt.isPresent() && userOpt.get() instanceof Client client)) {
-            throw new IllegalArgumentException("Client not found: " + request.clientId());
-        }
-
-        District from;
-        District to;
-        try {
-            from = District.valueOf(request.fromDistrict().toUpperCase());
-            to = District.valueOf(request.toDistrict().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Unknown district: " + request.fromDistrict() + "/" + request.toDistrict());
-        }
-
-        Order order = orderService.createOrderFromCart(
-                client, request.restaurantId(), from, to, from.distanceTo(to));
-        ctx.status(201).json(order);
+    /** GET /api/orders/user/{userId} — the client's own history. */
+    public void getClientHistory(Context ctx) {
+        long userId = Long.parseLong(ctx.pathParam("userId"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        Client client = clientRepository.findByIdUser(user.getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "User " + userId + " has no client profile"));
+        List<OrderDto> orders = orderService.getOrderHistory(client.getId()).stream()
+                .map(this::toDto)
+                .toList();
+        ctx.json(orders);
     }
 
-    /** POST /api/orders/{id}/status  body: StatusUpdateRequest */
+    /** POST /api/orders — checkout one restaurant's part of the cart. */
+    public void createOrder(Context ctx) {
+        CreateOrderRequest request = ctx.bodyAsClass(CreateOrderRequest.class);
+        Order order = orderService.createOrderFromCart(
+                request.userId(), request.restaurantId(), request.deliveryAddress());
+        ctx.status(201).json(toDto(order));
+    }
+
+    /** POST /api/orders/{id}/status — role-checked status transition. */
     public void updateStatus(Context ctx) {
-        String orderId = ctx.pathParam("id");
-        Order order = orderService.getOrder(orderId);
-
+        long orderId = Long.parseLong(ctx.pathParam("id"));
         StatusUpdateRequest request = ctx.bodyAsClass(StatusUpdateRequest.class);
-        if (request == null || request.status() == null || request.status().isBlank()) {
-            throw new IllegalArgumentException("Missing 'status' in request body.");
-        }
-
         OrderStatus newStatus;
         try {
             newStatus = OrderStatus.valueOf(request.status().toUpperCase());
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | NullPointerException e) {
             throw new IllegalArgumentException("Unknown status: " + request.status());
         }
+        Order order = orderService.updateStatus(orderId, newStatus, request.actorId());
+        ctx.json(toDto(order));
+    }
 
-        // Transitions to DELIVERING/COMPLETED must be performed by a Courier,
-        // all other transitions are allowed for the order's client.
-        var actor = (newStatus == OrderStatus.DELIVERING || newStatus == OrderStatus.COMPLETED)
-                ? courierActor
-                : order.getClient();
+    /** Domain -> DTO with denormalized names (one lookup per reference). */
+    private OrderDto toDto(Order order) {
+        String clientName = clientRepository.findById(order.getClientId())
+                .flatMap(c -> userRepository.findById(c.getIdUser()))
+                .map(User::getUsername)
+                .orElse("?");
+        String restaurantName = restaurantRepository.findById(order.getRestaurantId())
+                .map(Restaurant::getName)
+                .orElse("?");
 
-        orderService.updateOrderStatus(order, newStatus, actor);
-        ctx.json(order);
+        List<OrderItemDto> items = order.getItems().stream()
+                .map(this::toItemDto)
+                .toList();
+
+        return new OrderDto(
+                order.getId(),
+                order.getClientId(), clientName,
+                order.getRestaurantId(), restaurantName,
+                order.getCourierId(),
+                order.getStatus().name(), order.getStatus().labelRu(),
+                order.getTotalPrice(),
+                order.getDeliveryAddress(),
+                order.getCreatedAt().toString(),
+                items);
+    }
+
+    private OrderItemDto toItemDto(OrderItem item) {
+        String name = productRepository.findById(item.getProductId())
+                .map(Product::getName)
+                .orElse("?");
+        return new OrderItemDto(item.getProductId(), name,
+                item.getQuantity(), item.getPriceAtOrder());
     }
 }

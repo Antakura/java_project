@@ -1,12 +1,8 @@
 package com.delivery.web.dto;
 
 /**
- * Request body for changing an order's status.
- * The acting user (courier vs. client) is resolved on the server side:
- * transitions to DELIVERING/COMPLETED are performed by a Courier,
- * all other transitions — by the order's client.
+ * Status change request. The actor is explicit in the body (no hidden session):
+ * the service checks both the role and, for couriers, district eligibility.
  */
-public record StatusUpdateRequest(
-        String status
-) {
+public record StatusUpdateRequest(String status, long actorId) {
 }

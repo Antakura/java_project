@@ -1,11 +1,17 @@
 package com.delivery.repository;
 
 import com.delivery.model.Product;
-import java.util.Optional;
+
+import java.util.List;
 
 /**
- * Repository interface for managing products.
+ * Repository for {@code products}.
  */
 public interface ProductRepository extends Repository<Product> {
-    Optional<Product> findById(String id);
+
+    /** All products of a restaurant, including unavailable ones (admin view). */
+    List<Product> findByRestaurantId(long restaurantId);
+
+    /** Only the products that can currently be ordered (menu page). */
+    List<Product> findAvailableByRestaurantId(long restaurantId);
 }

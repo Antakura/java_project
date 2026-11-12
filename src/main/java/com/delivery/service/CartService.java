@@ -1,59 +1,104 @@
 package com.delivery.service;
 
+import com.delivery.model.CartLine;
 import com.delivery.model.Product;
-import com.delivery.model.User;
-import java.util.*;
+import com.delivery.repository.ProductRepository;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Service for managing user shopping carts.
- * Handles the logic of splitting items by restaurant.
- * Thread-safe: backed by ConcurrentHashMap and CopyOnWriteArrayList,
- * consistent with the in-memory repositories.
+ * Shopping cart service.
+ *
+ * <h2>Key requirement: one cart, many baskets</h2>
+ * A user has exactly ONE cart (keyed by user id), but items from different
+ * restaurants must be checked out as SEPARATE orders. That is why the main read
+ * method is {@link #getSplitByRestaurant(long)} — it groups the lines by the
+ * owning restaurant, and checkout operates on one group at a time.
+ *
+ * <h2>Why only ids in memory?</h2>
+ * Lines are {@code (productId, quantity)} value objects; prices are re-read from
+ * the catalog at checkout and frozen into {@code order_items.price_at_order}.
+ * The cart therefore never goes stale and stays trivially thread-safe.
  */
 public class CartService {
-    // Map of UserId -> List of Products in their cart
-    private final Map<String, List<Product>> userCarts = new ConcurrentHashMap<>();
 
-    public void addToCart(User user, Product product) {
-        userCarts.computeIfAbsent(user.getId(), k -> new CopyOnWriteArrayList<>()).add(product);
+    /** userId -> productId -> line. ConcurrentHashMap: web handlers run on pool threads. */
+    private final Map<Long, Map<Long, CartLine>> carts = new ConcurrentHashMap<>();
+
+    private final ProductRepository productRepository;
+
+    public CartService(ProductRepository productRepository) {
+        this.productRepository = productRepository;
     }
 
-    public void clearCart(User user) {
-        userCarts.remove(user.getId());
+    /** Adds one unit of a product (creates the line if it is not there yet). */
+    public void addToCart(long userId, long productId) {
+        if (userId <= 0) {
+            throw new IllegalArgumentException("Invalid user id: " + userId);
+        }
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId));
+        if (!product.isAvailable()) {
+            throw new IllegalStateException("Product is not available: " + product.getName());
+        }
+        carts.computeIfAbsent(userId, key -> new ConcurrentHashMap<>())
+                .compute(productId, (id, line) -> line == null ? new CartLine(id, 1) : line.increment());
     }
 
-    /**
-     * Removes only the items of a specific restaurant from the user's cart,
-     * leaving items of other restaurants intact. This allows splitting one
-     * cart into several orders (one per restaurant).
-     */
-    public void clearRestaurantItems(String userId, String restaurantId) {
-        List<Product> cart = userCarts.get(userId);
+    /** Removes a whole line from the cart. No-op if the product is not in it. */
+    public void removeItem(long userId, long productId) {
+        Map<Long, CartLine> cart = carts.get(userId);
         if (cart != null) {
-            cart.removeIf(product -> product.getRestaurantId().equals(restaurantId));
+            cart.remove(productId);
         }
+    }
+
+    /** Empties the entire cart of a user. */
+    public void clearCart(long userId) {
+        carts.remove(userId);
     }
 
     /**
-     * Splits the current cart into groups based on restaurantId.
-     * Each group represents a potential order for a specific restaurant.
-     * 
-     * @param userId The ID of the user
-     * @return A map where key is restaurantId and value is the list of products for that restaurant.
+     * The "split basket" view: lines grouped by restaurant id.
+     * Restaurant order is stable (insertion order) so the UI renders sections
+     * in a predictable way.
      */
-    public Map<String, List<Product>> getSplitCartByRestaurant(String userId) {
-        List<Product> cartItems = userCarts.getOrDefault(userId, Collections.emptyList());
-        Map<String, List<Product>> splitCart = new HashMap<>();
-
-        for (Product product : cartItems) {
-            splitCart.computeIfAbsent(product.getRestaurantId(), k -> new ArrayList<>()).add(product);
+    public Map<Long, List<CartLine>> getSplitByRestaurant(long userId) {
+        Map<Long, List<CartLine>> split = new LinkedHashMap<>();
+        Map<Long, CartLine> cart = carts.get(userId);
+        if (cart == null) {
+            return split;
         }
-        return splitCart;
+        for (CartLine line : cart.values()) {
+            Product product = productRepository.findById(line.getProductId()).orElse(null);
+            // A deleted product leaves a stale line: skip it in the view.
+            if (product == null) {
+                continue;
+            }
+            split.computeIfAbsent(product.getRestaurantId(), key -> new ArrayList<>())
+                    .add(line);
+        }
+        return split;
     }
 
-    public List<Product> getItemsForRestaurant(String userId, String restaurantId) {
-        return new ArrayList<>(getSplitCartByRestaurant(userId).getOrDefault(restaurantId, Collections.emptyList()));
+    /** Lines of one restaurant only — what checkout consumes. */
+    public List<CartLine> getLinesForRestaurant(long userId, long restaurantId) {
+        return getSplitByRestaurant(userId).getOrDefault(restaurantId, List.of());
+    }
+
+    /** After a successful checkout: drop exactly that restaurant's lines. */
+    public void clearRestaurant(long userId, long restaurantId) {
+        Map<Long, CartLine> cart = carts.get(userId);
+        if (cart == null) {
+            return;
+        }
+        cart.entrySet().removeIf(entry -> {
+            Product product = productRepository.findById(entry.getKey()).orElse(null);
+            return product != null && product.getRestaurantId() == restaurantId;
+        });
     }
 }

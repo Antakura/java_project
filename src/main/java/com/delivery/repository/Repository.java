@@ -4,32 +4,25 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Generic repository interface.
- * @param <T> The type of the entity
+ * Generic repository contract (Layered Architecture: the persistence layer is
+ * hidden behind this interface, so services never touch JDBC directly).
+ *
+ * <p>All entities use database-generated {@code long} primary keys.</p>
+ *
+ * @param <T> the entity type
  */
 public interface Repository<T> {
+
     /**
-     * Saves an entity in the storage.
-     * @param entity The entity to save
+     * Inserts a new entity or updates an existing one (matched by id).
+     * For a new entity the generated primary key is written back via
+     * {@code assignId(...)} on the same instance.
      */
     void save(T entity);
 
-    /**
-     * Finds an entity by its identifier.
-     * @param id The identifier of the entity
-     * @return Optional containing the entity if it is found
-     */
-    Optional<T> findById(String id);
+    Optional<T> findById(long id);
 
-    /**
-     * Returns a list of all entities.
-     * @return A list of all stored entities
-     */
     List<T> findAll();
 
-    /**
-     * Removes an entity from the storage by its identifier.
-     * @param id The identifier of the entity to remove
-     */
-    void delete(String id);
+    void delete(long id);
 }
